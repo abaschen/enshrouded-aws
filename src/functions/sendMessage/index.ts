@@ -20,7 +20,7 @@ const webhookId: string = process.env.WEBHOOK_ID;
 const webhookToken: string = process.env.WEBHOOK_TOKEN;
 const webhook = false;
 async function send({ applicationId, token }, content: string, embeds: any[] | undefined = undefined) {
-    if (webhook) {
+    if (webhook || !applicationId || !token) {
         return await rest.post<APIRequest>(Routes.webhook(webhookId, webhookToken), {
             content,
             embeds
@@ -34,30 +34,19 @@ async function send({ applicationId, token }, content: string, embeds: any[] | u
 }
 
 export const handler = async ({ applicationId, token, message }: ResponseEvent): Promise<any> => {
-    if (!applicationId || !token) {
-        throw new Error('Wrong configuration to handle discord message');
-    }
     const { content, embeds }: RESTPostAPIWebhookWithTokenJSONBody = message;
     try {
         console.log(message);
         if (embeds && embeds.length > 0) {
-            console.log("embeds");
-            try {
-                await send({ applicationId, token }, '', embeds);
-            } catch (emErr) {
-                console.log("error on sending ", emErr);
-                console.error(JSON.stringify(emErr.response.data.errors));
+            await send({ applicationId, token }, '', embeds);
 
-                await send({ applicationId, token }, content);
-            }
         } else {
-            console.log("only content");
             await send({ applicationId, token }, content);
         }
     } catch (e) {
         console.error(JSON.stringify(e));
 
-        await send({ applicationId, token }, content);
+        await send({ applicationId, token }, JSON.stringify(e.response.data.errors));
 
     }
     return {};
