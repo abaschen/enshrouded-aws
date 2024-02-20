@@ -1,0 +1,135 @@
+{
+  "Comment": "State machine to handle discord application commands",
+  "StartAt": "Environment",
+  "TimeoutSeconds": 3600,
+  "States": {
+    "Environment": {
+      "Type": "Pass",
+      "Next": "Switch Command",
+      "ResultPath": "$.env",
+      "Result": {
+        "host": "${host}:15637",
+        "instanceId": "${instanceId}"
+      }
+    },
+    "Switch Command": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.subcommand",
+          "StringMatches": "restart",
+          "Next": "RebootInstances"
+        },
+        {
+          "Variable": "$.subcommand",
+          "StringMatches": "stop",
+          "Next": "StopInstances"
+        },
+        {
+          "Variable": "$.command",
+          "StringMatches": "start",
+          "Next": "StartInstances"
+        }
+      ],
+      "Default": "DescribeInstances"
+    },
+    "StartInstances": {
+      "Type": "Task",
+      "Next": "Pass",
+      "Parameters": {
+        "InstanceIds.$": "States.Array($.env.instanceId)"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:ec2:startInstances"
+    },
+    "StopInstances": {
+      "Type": "Task",
+      "Next": "Pass",
+      "Parameters": {
+        "InstanceIds.$": "States.Array($.env.instanceId)"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:ec2:stopInstances"
+    },
+    "RebootInstances": {
+      "Type": "Task",
+      "Next": "Pass",
+      "Parameters": {
+        "InstanceIds.$": "States.Array($.env.instanceId)"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:ec2:rebootInstances"
+    },
+    "DescribeInstances": {
+      "Type": "Task",
+      "Next": "GetStatus",
+      "Parameters": {
+        "InstanceIds.$": "States.Array($.env.instanceId)"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:ec2:describeInstances",
+      "ResultPath": "$.instance"
+    },
+    "GetStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${queryFn}:$LATEST",
+        "Payload": {
+          "host.$": "$.env.host",
+          "state.$": "$.instance.Reservations[0].Instances[0].State.Name",
+          "instanceType.$": "$.instance.Reservations[0].Instances[0].InstanceType"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "Pass",
+      "ResultPath": "$.message",
+      "ResultSelector": {
+        "Payload.$": "$.Payload"
+      }
+    },
+    "Pass": {
+      "Type": "Pass",
+      "Next": "SendMessage"
+    },
+    "SendMessage": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "FunctionName": "${sendMessageFn}:$LATEST",
+        "Payload": {
+          "applicationId.$": "$.applicationId",
+          "token.$": "$.token",
+          "message.$": "$.message.Payload"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "End"
+    },
+    "End": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}
