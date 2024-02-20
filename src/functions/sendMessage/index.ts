@@ -28,7 +28,7 @@ export const handler = async ({ applicationId, token, message }: ResponseEvent):
         if (embeds && embeds.length > 0) {
             console.log("embeds");
             try {
-                await rest.post<APIRequest>(Routes.webhookMessage(applicationId, token), {
+                await rest.patch<APIRequest>(Routes.webhookMessage(applicationId, token), {
                     embeds
                 });
             } catch (emErr) {
