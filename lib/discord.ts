@@ -27,6 +27,7 @@ export class DiscordStack extends Stack {
         super(scope, id, props);
         
         const lambdaDefault: Partial<NodetsFunctionProps> = {
+            timeout: Duration.minutes(1),
             bundling: {
                 sourceMap: false,
                 minify: true
@@ -193,7 +194,11 @@ export class DiscordStack extends Stack {
             ...lambdaDefault,
             description: 'Send message to discord',
             entry: 'src/functions/sendMessage/index.ts',
-            timeout: Duration.minutes(1)
+            timeout: Duration.minutes(1),
+            environment: {
+                WEBHOOK_ID: process.env.WEBHOOK_ID || '',
+                WEBHOOK_TOKEN:  process.env.WEBHOOK_TOKEN || ''
+            }
         })
         const stateMachine = new StateMachine(this, 'discordCommandStateMachine', {
             logs: {
@@ -215,7 +220,8 @@ export class DiscordStack extends Stack {
             ...lambdaDefault,
             description: 'API gateway invoke this lambda when receiving interaction',
             entry: 'src/functions/authorize/index.ts',
-            timeout: Duration.seconds(5),
+            //discord timeout
+            timeout: Duration.seconds(3),
             environment: {
                 //todo add to secret manager
                 APP_PUBLIC_KEY: param.stringValue,

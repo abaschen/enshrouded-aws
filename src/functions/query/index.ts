@@ -14,15 +14,7 @@ export const handler = async ({ host, state, instanceType, userId }: QueryGameEv
     return {
       // content: `Server ${name} (${game}) is running with ${players}/${maxPlayers} online on AWS ${instanceType}. Add to [favorites](steam://connect/${host})`,
 
-      "content": "",
-      "embeds": [
-        {
-          "title": `Server is Offline`,
-          "description": "",
-          "color": 0xe50909,
-          "url": `steam://connect/${host}`
-        }
-      ]
+      "content": "Server is offline",
     };
   }
   const { name, game, players, maxPlayers, version, port }: Partial<InfoResponse> = await queryGameServerInfo(host);
@@ -48,8 +40,7 @@ export const handler = async ({ host, state, instanceType, userId }: QueryGameEv
             "name": `Instance Type`,
             "value": `${instanceType}`
           }
-        ],
-        "url": `steam://connect/${host}`
+        ]
       }
     ]
   };

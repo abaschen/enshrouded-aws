@@ -13,14 +13,29 @@ interface APIRequest {
     content: string,
     embeds?: any[]
 }
+if (!process.env.WEBHOOK_ID || !process.env.WEBHOOK_TOKEN) {
+    throw new Error("WEBHOOK_ID or WEBHOOK_TOKEN not set");
+}
+const webhookId: string = process.env.WEBHOOK_ID;
+const webhookToken: string = process.env.WEBHOOK_TOKEN;
+const webhook = false;
+async function send({ applicationId, token }, content: string, embeds: any[] | undefined = undefined) {
+    if (webhook) {
+        return await rest.post<APIRequest>(Routes.webhook(webhookId, webhookToken), {
+            content,
+            embeds
+        });
+    }
+    return await rest.patch<APIRequest>(Routes.webhookMessage(applicationId, token), {
+        content,
+        embeds
+    });
+
+}
+
 export const handler = async ({ applicationId, token, message }: ResponseEvent): Promise<any> => {
     if (!applicationId || !token) {
-        await rest.patch<APIRequest>(
-            Routes.webhookMessage(applicationId, token),
-            {
-                content: 'Wrong configuration to handle discord message'
-            }
-        );
+        throw new Error('Wrong configuration to handle discord message');
     }
     const { content, embeds }: RESTPostAPIWebhookWithTokenJSONBody = message;
     try {
@@ -28,28 +43,22 @@ export const handler = async ({ applicationId, token, message }: ResponseEvent):
         if (embeds && embeds.length > 0) {
             console.log("embeds");
             try {
-                await rest.patch<APIRequest>(Routes.webhookMessage(applicationId, token), {
-                    embeds
-                });
+                await send({ applicationId, token }, '', embeds);
             } catch (emErr) {
-                console.log("error on sending ", embeds);
-                console.error(emErr);
+                console.log("error on sending ", emErr);
+                console.error(JSON.stringify(emErr.response.data.errors));
 
-                await rest.patch<APIRequest>(
-                    Routes.webhookMessage(applicationId, token), { content }
-                );
+                await send({ applicationId, token }, content);
             }
         } else {
             console.log("only content");
-            await rest.patch<APIRequest>(Routes.webhookMessage(applicationId, token), { content });
+            await send({ applicationId, token }, content);
         }
     } catch (e) {
-        console.log("error on sending ", embeds);
-        console.error(e);
+        console.error(JSON.stringify(e));
 
-        await rest.patch<APIRequest>(
-            Routes.webhookMessage(applicationId, token), { content: e }
-        );
+        await send({ applicationId, token }, content);
+
     }
     return {};
 }

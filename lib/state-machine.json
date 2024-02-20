@@ -26,7 +26,7 @@
           "Next": "StopInstances"
         },
         {
-          "Variable": "$.command",
+          "Variable": "$.subcommand",
           "StringMatches": "start",
           "Next": "StartInstances"
         }
@@ -39,7 +39,13 @@
       "Parameters": {
         "InstanceIds.$": "States.Array($.env.instanceId)"
       },
-      "Resource": "arn:aws:states:::aws-sdk:ec2:startInstances"
+      "Resource": "arn:aws:states:::aws-sdk:ec2:startInstances",
+      "ResultSelector": {
+        "Payload": {
+          "content.$": "States.Format('Service is {}', $.StartingInstances[0].CurrentState.Name)"
+        }
+      },
+      "ResultPath": "$.message"
     },
     "StopInstances": {
       "Type": "Task",
@@ -47,7 +53,13 @@
       "Parameters": {
         "InstanceIds.$": "States.Array($.env.instanceId)"
       },
-      "Resource": "arn:aws:states:::aws-sdk:ec2:stopInstances"
+      "Resource": "arn:aws:states:::aws-sdk:ec2:stopInstances",
+      "ResultPath": "$.message",
+      "ResultSelector": {
+        "Payload": {
+          "content.$": "States.Format('Service is {}', $.StoppingInstances[0].CurrentState.Name)"
+        }
+      }
     },
     "RebootInstances": {
       "Type": "Task",
@@ -55,7 +67,13 @@
       "Parameters": {
         "InstanceIds.$": "States.Array($.env.instanceId)"
       },
-      "Resource": "arn:aws:states:::aws-sdk:ec2:rebootInstances"
+      "Resource": "arn:aws:states:::aws-sdk:ec2:rebootInstances",
+      "ResultSelector": {
+        "Payload": {
+          "content.$": "States.Format('Service is {}', $.RebootingInstances[0].CurrentState.Name)"
+        }
+      },
+      "ResultPath": "$.message"
     },
     "DescribeInstances": {
       "Type": "Task",
