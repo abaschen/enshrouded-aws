@@ -146,10 +146,13 @@ export class DiscordStack extends Stack {
         });
 
         if (!process.env.INSTANCE_ID) {
-            console.error("INSTANCE_ID not set")
-            process.exit(5);
+            throw new Error("INSTANCE_ID not set")
         }
+        if(!process.env.EC2_PUBLIC_IP){
+            throw new Error("EC2_PUBLIC_IP is not defined")
+          }
         const instanceId: string = process.env.INSTANCE_ID;
+        const publicIp: string = process.env.EC2_PUBLIC_IP;
 
         new ARecord(this, 'discord-api-record', {
             zone: props.hostedZone,
@@ -160,7 +163,7 @@ export class DiscordStack extends Stack {
         new ARecord(this, 'discord-alias-record', {
             zone: props.hostedZone,
             recordName: 'ensh',
-            target: RecordTarget.fromIpAddresses("35.181.33.108"),
+            target: RecordTarget.fromIpAddresses(publicIp),
         }).applyRemovalPolicy(RemovalPolicy.DESTROY);
 
         const stateMachineRole = new Role(this, 'discordCommandStateMachineRole', {
@@ -174,7 +177,15 @@ export class DiscordStack extends Stack {
                             resources: [`*`]
                         }),
                     ]
-                })
+                }),
+                'start-stop-ec2':new PolicyDocument({
+                    statements: [
+                        new PolicyStatement({
+                            actions: ['ec2:StartInstance', 'ec2:StopInstance', 'ec2:RestartInstance'],
+                            resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/${instanceId}`]
+                        }),
+                    ]
+                }),
             }
         });
 

@@ -10,6 +10,9 @@ const app = new cdk.App();
 if (!process.env.HOSTED_ZONE_ID || !process.env.HOSTED_ZONE_NAME) {
   throw new Error("HOSTED_ZONE_ID or HOSTED_ZONE_NAME is not defined")
 }
+
+
+
 const base = new BaseStack(app, 'Base', {
   hostedZoneId: process.env.HOSTED_ZONE_ID,
   hostedZoneName: process.env.HOSTED_ZONE_NAME,
