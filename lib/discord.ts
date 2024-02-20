@@ -181,7 +181,7 @@ export class DiscordStack extends Stack {
                 'start-stop-ec2':new PolicyDocument({
                     statements: [
                         new PolicyStatement({
-                            actions: ['ec2:StartInstance', 'ec2:StopInstance', 'ec2:RestartInstance'],
+                            actions: ['ec2:StartInstances', 'ec2:StopInstances', 'ec2:RebootInstances'],
                             resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/${instanceId}`]
                         }),
                     ]
