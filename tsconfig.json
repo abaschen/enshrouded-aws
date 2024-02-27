@@ -26,8 +26,19 @@
     "strictPropertyInitialization": false,
     "emitDecoratorMetadata": true,
     "forceConsistentCasingInFileNames": true,
+    
     "typeRoots": [
       "./node_modules/@types"
+    ],
+    "paths": {
+      "@layer/*": [
+        "./src/layers/*"
+      ]
+    }
+  },
+  "aliases": {
+    "@layer/*": [
+      "src/layers/*"
     ]
   },
   "exclude": [

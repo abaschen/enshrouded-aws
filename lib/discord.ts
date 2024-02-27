@@ -15,7 +15,10 @@ import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
 import { DefinitionBody, StateMachine } from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
-import { SourceMapMode } from "aws-cdk-lib/aws-lambda-nodejs";
+import { EventBus, Rule } from 'aws-cdk-lib/aws-events';
+import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
+import { InstanceStateName } from "@aws-sdk/client-ec2";
+import { Tracing, Version } from "aws-cdk-lib/aws-lambda";
 
 export interface DiscordStackProps extends StackProps {
     hostedZone: IHostedZone
@@ -25,9 +28,11 @@ export class DiscordStack extends Stack {
 
     constructor(scope: Construct, id: string, props: DiscordStackProps) {
         super(scope, id, props);
-        
+
         const lambdaDefault: Partial<NodetsFunctionProps> = {
             timeout: Duration.minutes(1),
+            memorySize: 512,
+            tracing: Tracing.ACTIVE,
             bundling: {
                 sourceMap: false,
                 minify: true
@@ -149,9 +154,9 @@ export class DiscordStack extends Stack {
         if (!process.env.INSTANCE_ID) {
             throw new Error("INSTANCE_ID not set")
         }
-        if(!process.env.EC2_PUBLIC_IP){
+        if (!process.env.EC2_PUBLIC_IP) {
             throw new Error("EC2_PUBLIC_IP is not defined")
-          }
+        }
         const instanceId: string = process.env.INSTANCE_ID;
         const publicIp: string = process.env.EC2_PUBLIC_IP;
 
@@ -179,7 +184,7 @@ export class DiscordStack extends Stack {
                         }),
                     ]
                 }),
-                'start-stop-ec2':new PolicyDocument({
+                'start-stop-ec2': new PolicyDocument({
                     statements: [
                         new PolicyStatement({
                             actions: ['ec2:StartInstances', 'ec2:StopInstances', 'ec2:RebootInstances'],
@@ -197,7 +202,7 @@ export class DiscordStack extends Stack {
             timeout: Duration.minutes(1),
             environment: {
                 WEBHOOK_ID: process.env.WEBHOOK_ID || '',
-                WEBHOOK_TOKEN:  process.env.WEBHOOK_TOKEN || ''
+                WEBHOOK_TOKEN: process.env.WEBHOOK_TOKEN || ''
             }
         })
         const stateMachine = new StateMachine(this, 'discordCommandStateMachine', {
@@ -221,12 +226,17 @@ export class DiscordStack extends Stack {
             description: 'API gateway invoke this lambda when receiving interaction',
             entry: 'src/functions/authorize/index.ts',
             //discord timeout
-            timeout: Duration.seconds(3),
+            timeout: Duration.seconds(6),
             environment: {
                 //todo add to secret manager
                 APP_PUBLIC_KEY: param.stringValue,
                 STATE_MACHINE_ARN: stateMachine.stateMachineArn
             }
+        });
+
+        const authorizeVersion = new Version(this, 'fnAuthorizeVersion', {
+            lambda: fnAuthorize.lambda,
+            provisionedConcurrentExecutions: 1,
         });
 
 
@@ -323,8 +333,8 @@ export class DiscordStack extends Stack {
         // API to fnDiscordToEvent
         fnQuery.lambda.grantInvoke(stateMachineRole)
         sendMessage.lambda.grantInvoke(stateMachineRole)
-        fnAuthorize.lambda.grantInvoke(apiGatewayExecuteRole);
-        endpoint.addMethod('POST', new LambdaIntegration(fnAuthorize.lambda, {
+        authorizeVersion.grantInvoke(apiGatewayExecuteRole);
+        endpoint.addMethod('POST', new LambdaIntegration(authorizeVersion, {
             credentialsRole: apiGatewayExecuteRole,
             //official discord timeout for interaction
             timeout: Duration.seconds(10)
@@ -332,6 +342,47 @@ export class DiscordStack extends Stack {
 
 
         // fnDiscordToEvent to SNS topic
-        stateMachine.grantStartExecution(fnAuthorize.lambda);
+        stateMachine.grantStartExecution(authorizeVersion);
+
+        if (process.env.WEBHOOK_ID && process.env.WEBHOOK_TOKEN && process.env.INSTANCE_ID) {
+            const notifyRole = new Role(this, 'ec2NotifyRole', {
+                // role with default lambda managed policy and CreateTags for EC2 specific InstanceID
+                assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+                managedPolicies: [ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')],
+                inlinePolicies: {
+                    'ec2-tag': new PolicyDocument({
+                        statements: [
+                            new PolicyStatement({
+                                actions: ['ec2:CreateTags'],
+                                resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/${process.env.INSTANCE_ID}`]
+                            }),
+                        ]
+                    })
+                }
+            });
+            const notifyFn = new NodetsFunction(this, 'ec2Notify', {
+                ...lambdaDefault,
+                role: notifyRole,
+                entry: './src/functions/notify/index.ts',
+                environment: {
+                    WEBHOOK_ID: process.env.WEBHOOK_ID,
+                    WEBHOOK_TOKEN: process.env.WEBHOOK_TOKEN
+                }
+            })
+            // tracking server state using webhook:
+            const defaultBus = EventBus.fromEventBusName(this, 'defaultEventBusDiscord', 'default');
+            new Rule(this, 'ruleEc2Notify', {
+                eventBus: defaultBus,
+                eventPattern: {
+                    source: ["aws.ec2"],
+                    detailType: ["EC2 Instance State-change Notification"],
+                    detail: {
+                        "state": [InstanceStateName.stopped, InstanceStateName.stopped, InstanceStateName.running, InstanceStateName.pending],
+                        "instance-id":[process.env.INSTANCE_ID]
+                    }
+                },
+                targets: [new LambdaFunction(notifyFn.lambda)]
+            });
+        }
     }
 }

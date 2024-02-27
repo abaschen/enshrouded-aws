@@ -68,21 +68,37 @@
         "InstanceIds.$": "States.Array($.env.instanceId)"
       },
       "Resource": "arn:aws:states:::aws-sdk:ec2:rebootInstances",
-      "ResultSelector": {
-        "Payload": {
-          "content.$": "States.Format('Service is {}', $.RebootingInstances[0].CurrentState.Name)"
-        }
-      },
       "ResultPath": "$.message"
     },
     "DescribeInstances": {
       "Type": "Task",
-      "Next": "GetStatus",
+      "Next": "Choice",
       "Parameters": {
         "InstanceIds.$": "States.Array($.env.instanceId)"
       },
       "Resource": "arn:aws:states:::aws-sdk:ec2:describeInstances",
       "ResultPath": "$.instance"
+    },
+    "Choice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Not": {
+            "Variable": "$.instance.Reservations[0].Instances[0].State.Name",
+            "StringEquals": "running"
+          },
+          "Next": "Set Message"
+        }
+      ],
+      "Default": "GetStatus"
+    },
+    "Set Message": {
+      "Type": "Pass",
+      "Next": "Pass",
+      "ResultPath": "$.message",
+      "Result": {
+        "content.$": "States.Format('Server is {}',$.instance.Reservations[0].Instances[0].State.Name)"
+      }
     },
     "GetStatus": {
       "Type": "Task",
@@ -92,7 +108,8 @@
         "Payload": {
           "host.$": "$.env.host",
           "state.$": "$.instance.Reservations[0].Instances[0].State.Name",
-          "instanceType.$": "$.instance.Reservations[0].Instances[0].InstanceType"
+          "instanceType.$": "$.instance.Reservations[0].Instances[0].InstanceType",
+          "tags.$": "$.instance.Reservations[0].Instances[0].Tags"
         }
       },
       "Retry": [
